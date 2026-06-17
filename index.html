@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>iOS Live Input Anti-Spoof</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #080808; color: #e0e0e0; padding: 12px; font-size: 13px; }
+h1 { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 2px; }
+.sub { color: #555; font-size: 11px; margin-bottom: 12px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.card { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 10px 12px; }
+.card-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #555; margin-bottom: 6px; }
+.metric { font-size: 22px; font-weight: 700; color: #fff; line-height: 1; }
+.metric.green { color: #4ade80; }
+.metric.red { color: #f87171; }
+.metric.yellow { color: #fbbf24; }
+.metric.blue { color: #60a5fa; }
+.metric-sub { font-size: 10px; color: #555; margin-top: 3px; }
+.section { margin-bottom: 12px; }
+.section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #444; margin-bottom: 6px; padding-left: 2px; }
+.row { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: #0e0e0e; border: 1px solid #1a1a1a; border-radius: 7px; margin-bottom: 4px; }
+.row-name { font-size: 12px; color: #aaa; }
+.row-val { font-size: 11px; font-family: 'SF Mono', monospace; color: #666; max-width: 200px; text-align: right; word-break: break-all; }
+.badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
+.badge.pass { background: #14532d; color: #4ade80; }
+.badge.fail { background: #450a0a; color: #f87171; }
+.badge.warn { background: #451a03; color: #fbbf24; }
+.badge.info { background: #1e3a5f; color: #60a5fa; }
+.touch-zone { width: 100%; height: 160px; background: #0d0d0d; border: 1px dashed #2a2a2a; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; position: relative; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+.touch-zone-hint { color: #333; font-size: 12px; pointer-events: none; }
+.touch-dot { position: absolute; width: 40px; height: 40px; border-radius: 50%; background: rgba(96,165,250,0.3); border: 2px solid #60a5fa; transform: translate(-50%, -50%); pointer-events: none; transition: width 0.05s, height 0.05s; }
+.force-bar-wrap { width: 100%; height: 8px; background: #1a1a1a; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+.force-bar { height: 100%; border-radius: 4px; background: #3b82f6; width: 0%; transition: width 0.05s; }
+.canvas-zone { width: 100%; height: 80px; background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 8px; display: block; }
+.verdict-box { border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+.verdict-box.real { background: #052e16; border: 1px solid #166534; }
+.verdict-box.fake { background: #2d0a0a; border: 1px solid #7f1d1d; }
+.verdict-box.mixed { background: #1c1500; border: 1px solid #78350f; }
+.verdict-title { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+.verdict-detail { font-size: 11px; color: #888; }
+.keystroke-log { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 8px; padding: 8px; height: 80px; overflow-y: auto; font-family: 'SF Mono', monospace; font-size: 10px; color: #555; margin-bottom: 4px; }
+.ks-entry { margin-bottom: 2px; }
+.ks-entry.mouse { color: #f87171; }
+.ks-entry.touch { color: #4ade80; }
+.ks-entry.key { color: #fbbf24; }
+.ks-entry.force { color: #60a5fa; }
+input[type=text] { width: 100%; padding: 10px; background: #111; border: 1px solid #222; border-radius: 8px; color: #e0e0e0; font-size: 13px; outline: none; margin-bottom: 8px; }
+input[type=text]:focus { border-color: #3b82f6; }
+.reset-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #888; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.accel-bar-wrap { width: 100%; height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden; margin: 3px 0; }
+.accel-bar { height: 100%; border-radius: 3px; width: 0%; transition: width 0.05s; }
+.accel-bar.accel-x { background: #f87171; }
+.accel-bar.accel-y { background: #4ade80; }
+.accel-bar.accel-mag { background: #fbbf24; }
+.ks-entry.clip { color: #c084fc; }
+.clip-preview { font-size: 10px; color: #7c3aed; background: #1a0a2e; border: 1px solid #2d1b4e; border-radius: 5px; padding: 4px 8px; margin-top: 4px; word-break: break-all; font-family: 'SF Mono', monospace; max-height: 40px; overflow: hidden; }
+</style>
+</head>
+<body>
+
+<h1>Live Input Anti-Spoof</h1>
+<p class="sub">Interact with the page — touch, tap, type, move mouse</p>
+
+<div id="verdictBox" class="verdict-box mixed">
+  <div class="verdict-title" id="verdictTitle" style="color:#fbbf24">Waiting for input...</div>
+  <div class="verdict-detail" id="verdictDetail">Interact with the touch zone and text field below</div>
+</div>
+
+<div class="grid3">
+  <div class="card">
+    <div class="card-title">Mouse moves</div>
+    <div class="metric red" id="mouseCount">0</div>
+    <div class="metric-sub">should be 0 on iPhone</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Touch events</div>
+    <div class="metric green" id="touchCount">0</div>
+    <div class="metric-sub">primary input on iPhone</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Key strokes</div>
+    <div class="metric yellow" id="keyCount">0</div>
+    <div class="metric-sub">HW keyboard = suspicious</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">Touch Zone — tap and drag here</div>
+  <div class="touch-zone" id="touchZone">
+    <span class="touch-zone-hint">Tap · Drag · Press hard for Force Touch</span>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <div class="card-title">Touch force (touch.force)</div>
+      <div class="metric blue" id="forceVal">—</div>
+      <div class="force-bar-wrap"><div class="force-bar" id="forceBar"></div></div>
+      <div class="metric-sub">0.0–1.0 · only real device</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Max force seen</div>
+      <div class="metric blue" id="maxForce">—</div>
+      <div class="metric-sub">&gt;0.0 = real hardware</div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <div class="card-title">Touch radius X/Y</div>
+      <div class="metric" id="radiusVal">—</div>
+      <div class="metric-sub">radiusX · radiusY px</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Active touches</div>
+      <div class="metric" id="touchActiveCount">0</div>
+      <div class="metric-sub">multitouch count</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">Touch physics</div>
+  <div class="grid">
+    <div class="card">
+      <div class="card-title">Avg velocity px/ms</div>
+      <div class="metric" id="avgVel">—</div>
+      <div class="metric-sub">human = variable</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Velocity variance</div>
+      <div class="metric" id="velVar">—</div>
+      <div class="metric-sub">&lt;0.01 = bot-like</div>
+    </div>
+  </div>
+  <canvas class="canvas-zone" id="velCanvas"></canvas>
+</div>
+
+<div class="section">
+  <div class="section-label">Keyboard / text input — type below</div>
+  <input type="text" id="testInput" placeholder="Type here to test keyboard signals..." autocomplete="off" autocorrect="on" autocapitalize="on" spellcheck="true">
+  <div class="keystroke-log" id="ksLog"></div>
+</div>
+
+<div class="section">
+  <div class="section-label">Haptic / motion capability</div>
+  <div class="row" id="rowVibration">
+    <span class="row-name">navigator.vibrate</span>
+    <span class="row-val" id="valVibration">—</span>
+  </div>
+  <div class="row" id="rowMotionAPI">
+    <span class="row-name">DeviceMotionEvent exists</span>
+    <span class="row-val" id="valMotionAPI">—</span>
+  </div>
+  <div class="row" id="rowMotionPerm">
+    <span class="row-name">Requires permission (iOS 13+)</span>
+    <span class="row-val" id="valMotionPerm">—</span>
+  </div>
+  <div class="row" id="rowTouchForceAPI">
+    <span class="row-name">Touch.force property available</span>
+    <span class="row-val" id="valTouchForceAPI">—</span>
+  </div>
+  <div class="row" id="rowTouchRadiusAPI">
+    <span class="row-name">Touch.radiusX/Y available</span>
+    <span class="row-val" id="valTouchRadiusAPI">—</span>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">Mouse analysis</div>
+  <div class="row">
+    <span class="row-name">First input type</span>
+    <span class="row-val" id="valFirstInput">waiting...</span>
+  </div>
+  <div class="row">
+    <span class="row-name">Last mouse position</span>
+    <span class="row-val" id="valMousePos">none</span>
+  </div>
+  <div class="row">
+    <span class="row-name">Mouse path points recorded</span>
+    <span class="row-val" id="valMousePath">0</span>
+  </div>
+  <div class="row">
+    <span class="row-name">Mouse velocity avg px/ms</span>
+    <span class="row-val" id="valMouseVel">—</span>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">Input type breakdown</div>
+  <div class="row">
+    <span class="row-name">insertText events (virtual KB)</span>
+    <span class="row-val" id="valInsertText">0</span>
+  </div>
+  <div class="row">
+    <span class="row-name">deleteContentBackward</span>
+    <span class="row-val" id="valDelete">0</span>
+  </div>
+  <div class="row">
+    <span class="row-name">compositionstart (IME)</span>
+    <span class="row-val" id="valCompose">0</span>
+  </div>
+  <div class="row">
+    <span class="row-name">Physical key codes seen</span>
+    <span class="row-val" id="valKeyCodes">none</span>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">Mouse acceleration</div>
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title">Accel X px/ms²</div>
+      <div class="metric red" id="accelX">—</div>
+      <div class="accel-bar-wrap"><div class="accel-bar accel-x" id="barAccelX"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Accel Y px/ms²</div>
+      <div class="metric green" id="accelY">—</div>
+      <div class="accel-bar-wrap"><div class="accel-bar accel-y" id="barAccelY"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Magnitude</div>
+      <div class="metric yellow" id="accelMag">—</div>
+      <div class="accel-bar-wrap"><div class="accel-bar accel-mag" id="barAccelMag"></div></div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <div class="card-title">Peak acceleration</div>
+      <div class="metric" id="accelPeak">—</div>
+      <div class="metric-sub">px/ms² — bot = perfectly smooth</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Accel variance</div>
+      <div class="metric" id="accelVar">—</div>
+      <div class="metric-sub">low = robotic / scripted</div>
+    </div>
+  </div>
+  <canvas class="canvas-zone" id="accelCanvas"></canvas>
+  <div style="margin-top:6px">
+    <div class="row">
+      <span class="row-name">movementX/Y available</span>
+      <span class="row-val" id="valMovement">—</span>
+    </div>
+    <div class="row">
+      <span class="row-name">Direction changes</span>
+      <span class="row-val" id="valDirChanges">0</span>
+    </div>
+    <div class="row">
+      <span class="row-name">Zero-velocity pauses</span>
+      <span class="row-val" id="valPauses">0</span>
+    </div>
+    <div class="row">
+      <span class="row-name">Movement pattern</span>
+      <span class="row-val" id="valPattern">waiting...</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">Copy / Paste / Cut detection</div>
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title">Copy events</div>
+      <div class="metric" id="copyCount">0</div>
+      <div class="metric-sub">Ctrl+C / ⌘C / context</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Paste events</div>
+      <div class="metric yellow" id="pasteCount">0</div>
+      <div class="metric-sub">programmatic paste = suspicious</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Cut events</div>
+      <div class="metric" id="cutCount">0</div>
+      <div class="metric-sub">Ctrl+X / ⌘X</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="row-name">Clipboard API available</span>
+    <span class="row-val" id="valClipAPI">—</span>
+  </div>
+  <div class="row">
+    <span class="row-name">Last paste length</span>
+    <span class="row-val" id="valPasteLen">—</span>
+  </div>
+  <div class="row">
+    <span class="row-name">Paste vs typed ratio</span>
+    <span class="row-val" id="valPasteRatio">—</span>
+  </div>
+  <div class="row">
+    <span class="row-name">Programmatic paste detected</span>
+    <span class="row-val" id="valProgPaste">—</span>
+  </div>
+  <div id="clipPreviewWrap" style="display:none">
+    <div class="clip-preview" id="clipPreview"></div>
+  </div>
+  <div class="keystroke-log" id="clipLog" style="margin-top:6px"></div>
+</div>
+
+<button class="reset-btn" onclick="resetAll()">Reset all counters</button>
+
+<script>
+const state = {
+  mouseCount: 0,
+  touchCount: 0,
+  keyCount: 0,
+  firstInput: null,
+  lastMousePos: null,
+  mousePath: [],
+  touchPath: [],
+  maxForce: 0,
+  forceObserved: false,
+  radiusObserved: false,
+  insertTextCount: 0,
+  deleteCount: 0,
+  composeCount: 0,
+  physicalKeys: new Set(),
+  velocityHistory: [],
+  lastTouchPos: null,
+  lastTouchTime: null,
+  // acceleration
+  lastVel: null,
+  lastVelTime: null,
+  accelHistory: [],
+  peakAccel: 0,
+  dirChanges: 0,
+  lastDir: null,
+  pauseCount: 0,
+  // clipboard
+  copyCount: 0,
+  pasteCount: 0,
+  cutCount: 0,
+  lastPasteLen: 0,
+  totalTyped: 0,
+  progPasteDetected: false,
+};
+
+// Velocity canvas
+const velCanvas = document.getElementById('velCanvas');
+const velCtx = velCanvas.getContext('2d');
+velCanvas.width = velCanvas.offsetWidth || 300;
+velCanvas.height = 80;
+const velHistory = [];
+
+// Acceleration canvas
+const accelCanvas = document.getElementById('accelCanvas');
+const accelCtx = accelCanvas.getContext('2d');
+accelCanvas.width = accelCanvas.offsetWidth || 300;
+accelCanvas.height = 80;
+const accelHistory = [];
+
+function drawAccelChart() {
+  accelCtx.clearRect(0, 0, accelCanvas.width, accelCanvas.height);
+  if (accelHistory.length < 2) return;
+  const max = Math.max(...accelHistory.map(a => a.mag), 0.001);
+  // magnitude line
+  accelCtx.beginPath();
+  accelCtx.strokeStyle = '#fbbf24';
+  accelCtx.lineWidth = 1.5;
+  accelHistory.forEach((a, i) => {
+    const x = (i / (accelHistory.length - 1)) * accelCanvas.width;
+    const y = accelCanvas.height - (a.mag / max) * (accelCanvas.height - 4) - 2;
+    if (i === 0) accelCtx.moveTo(x, y); else accelCtx.lineTo(x, y);
+  });
+  accelCtx.stroke();
+  // zero line
+  accelCtx.beginPath();
+  accelCtx.strokeStyle = '#2a2a2a';
+  accelCtx.lineWidth = 0.5;
+  accelCtx.moveTo(0, accelCanvas.height - 2);
+  accelCtx.lineTo(accelCanvas.width, accelCanvas.height - 2);
+  accelCtx.stroke();
+}
+
+function drawVelocityChart() {
+  velCtx.clearRect(0, 0, velCanvas.width, velCanvas.height);
+  if (velHistory.length < 2) return;
+  const max = Math.max(...velHistory, 1);
+  velCtx.beginPath();
+  velCtx.strokeStyle = '#3b82f6';
+  velCtx.lineWidth = 1.5;
+  velHistory.forEach((v, i) => {
+    const x = (i / (velHistory.length - 1)) * velCanvas.width;
+    const y = velCanvas.height - (v / max) * (velCanvas.height - 4) - 2;
+    if (i === 0) velCtx.moveTo(x, y);
+    else velCtx.lineTo(x, y);
+  });
+  velCtx.stroke();
+}
+
+function log(msg, type) {
+  const el = document.getElementById('ksLog');
+  const div = document.createElement('div');
+  div.className = `ks-entry ${type}`;
+  div.textContent = `[${new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'})}] ${msg}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  if (el.children.length > 80) el.removeChild(el.firstChild);
+}
+
+function setFirst(type) {
+  if (!state.firstInput) {
+    state.firstInput = type;
+    document.getElementById('valFirstInput').textContent = type;
+  }
+}
+
+// Mouse events
+document.addEventListener('mousemove', e => {
+  setFirst('mouse');
+  state.mouseCount++;
+  document.getElementById('mouseCount').textContent = state.mouseCount;
+  state.lastMousePos = { x: e.clientX, y: e.clientY };
+  document.getElementById('valMousePos').textContent = `${e.clientX}, ${e.clientY}`;
+
+  // movementX/Y — raw delta from browser, no sub-pixel rounding
+  const mx = e.movementX, my = e.movementY;
+  if (document.getElementById('valMovement').textContent === '—') {
+    document.getElementById('valMovement').innerHTML =
+      (mx !== undefined)
+        ? `true <span class="badge pass">available</span>`
+        : `false <span class="badge warn">unavailable</span>`;
+  }
+
+  const now = performance.now();
+  const vx = mx, vy = my; // px per event tick
+  const vel = Math.sqrt(vx*vx + vy*vy);
+
+  // Acceleration = Δvelocity / Δtime
+  if (state.lastVel !== null && state.lastVelTime !== null) {
+    const dt = now - state.lastVelTime;
+    if (dt > 0) {
+      const dv = vel - state.lastVel;
+      const ax = (vx - (state._lastVx || 0)) / dt;
+      const ay = (vy - (state._lastVy || 0)) / dt;
+      const amag = Math.sqrt(ax*ax + ay*ay);
+
+      if (amag > state.peakAccel) state.peakAccel = amag;
+
+      // Direction change detection
+      const dir = Math.atan2(vy, vx);
+      if (state.lastDir !== null) {
+        const dAngle = Math.abs(dir - state.lastDir);
+        if (dAngle > 0.5 && vel > 0.5) { // significant direction change
+          state.dirChanges++;
+          document.getElementById('valDirChanges').textContent = state.dirChanges;
+        }
+      }
+      if (vel > 0.1) state.lastDir = dir;
+
+      // Zero-velocity pause detection
+      if (vel < 0.5 && state.lastVel > 2) {
+        state.pauseCount++;
+        document.getElementById('valPauses').textContent = state.pauseCount;
+      }
+
+      // Update displays
+      document.getElementById('accelX').textContent = ax.toFixed(4);
+      document.getElementById('accelY').textContent = ay.toFixed(4);
+      document.getElementById('accelMag').textContent = amag.toFixed(4);
+      document.getElementById('accelPeak').textContent = state.peakAccel.toFixed(4);
+      document.getElementById('barAccelX').style.width = Math.min(100, Math.abs(ax) * 1000) + '%';
+      document.getElementById('barAccelY').style.width = Math.min(100, Math.abs(ay) * 1000) + '%';
+      document.getElementById('barAccelMag').style.width = Math.min(100, amag * 500) + '%';
+
+      // Store history for variance + chart
+      state.accelHistory.push(amag);
+      accelHistory.push({ mag: amag });
+      if (accelHistory.length > 80) accelHistory.shift();
+      drawAccelChart();
+
+      // Variance over last 20 samples
+      if (state.accelHistory.length >= 10) {
+        const recent = state.accelHistory.slice(-20);
+        const avg = recent.reduce((a,b)=>a+b,0)/recent.length;
+        const variance = recent.reduce((s,v)=>s+Math.pow(v-avg,2),0)/recent.length;
+        document.getElementById('accelVar').textContent = variance.toFixed(6);
+
+        // Pattern classification
+        const patEl = document.getElementById('valPattern');
+        if (variance < 0.0001) {
+          patEl.innerHTML = `<span style="color:#f87171">perfectly smooth — bot/automation</span>`;
+        } else if (variance < 0.001) {
+          patEl.innerHTML = `<span style="color:#fbbf24">very smooth — scripted movement</span>`;
+        } else if (variance < 0.01) {
+          patEl.innerHTML = `<span style="color:#60a5fa">moderate — trackpad/mouse</span>`;
+        } else {
+          patEl.innerHTML = `<span style="color:#4ade80">high variance — human-like</span>`;
+        }
+      }
+
+      state._lastVx = vx;
+      state._lastVy = vy;
+    }
+  }
+
+  state.lastVel = vel;
+  state.lastVelTime = now;
+  state._lastVx = vx;
+  state._lastVy = vy;
+
+  if (state.mousePath.length < 200) {
+    state.mousePath.push({ x: e.clientX, y: e.clientY, t: Date.now() });
+    document.getElementById('valMousePath').textContent = state.mousePath.length;
+    if (state.mousePath.length > 5) {
+      const path = state.mousePath;
+      const vels = [];
+      for (let i = 1; i < path.length; i++) {
+        const dt = path[i].t - path[i-1].t;
+        const dx = path[i].x - path[i-1].x;
+        const dy = path[i].y - path[i-1].y;
+        if (dt > 0) vels.push(Math.sqrt(dx*dx+dy*dy)/dt);
+      }
+      const avg = vels.reduce((a,b)=>a+b,0)/vels.length;
+      document.getElementById('valMouseVel').textContent = avg.toFixed(3) + ' px/ms';
+    }
+  }
+  updateVerdict();
+});
+
+document.addEventListener('mousedown', e => {
+  log(`mousedown at (${e.clientX},${e.clientY}) button=${e.button}`, 'mouse');
+  updateVerdict();
+});
+
+// Touch events
+const touchZone = document.getElementById('touchZone');
+let touchDot = null;
+
+function handleTouchMove(e) {
+  e.preventDefault();
+  setFirst('touch');
+  state.touchCount++;
+  document.getElementById('touchCount').textContent = state.touchCount;
+  document.getElementById('touchActiveCount').textContent = e.touches.length;
+
+  const t = e.touches[0];
+
+  // Force / pressure
+  const force = t.force !== undefined ? t.force : (t.webkitForce !== undefined ? t.webkitForce : null);
+  if (force !== null) {
+    state.forceObserved = true;
+    if (force > state.maxForce) state.maxForce = force;
+    document.getElementById('forceVal').textContent = force.toFixed(4);
+    document.getElementById('maxForce').textContent = state.maxForce.toFixed(4);
+    document.getElementById('forceBar').style.width = (force * 100) + '%';
+    if (force > 0.01) log(`force=${force.toFixed(3)}`, 'force');
+  }
+
+  // Radius
+  const rx = t.radiusX !== undefined ? t.radiusX : null;
+  const ry = t.radiusY !== undefined ? t.radiusY : null;
+  if (rx !== null) {
+    state.radiusObserved = true;
+    document.getElementById('radiusVal').textContent = `${rx.toFixed(1)} × ${ry.toFixed(1)}`;
+  }
+
+  // Position dot
+  const rect = touchZone.getBoundingClientRect();
+  const tx = t.clientX - rect.left;
+  const ty = t.clientY - rect.top;
+  if (!touchDot) {
+    touchDot = document.createElement('div');
+    touchDot.className = 'touch-dot';
+    touchZone.appendChild(touchDot);
+  }
+  const size = rx ? Math.max(30, rx * 4) : 40;
+  touchDot.style.width = size + 'px';
+  touchDot.style.height = size + 'px';
+  touchDot.style.left = tx + 'px';
+  touchDot.style.top = ty + 'px';
+
+  // Physics
+  const now = Date.now();
+  if (state.lastTouchPos && state.lastTouchTime) {
+    const dt = now - state.lastTouchTime;
+    const dx = t.clientX - state.lastTouchPos.x;
+    const dy = t.clientY - state.lastTouchPos.y;
+    if (dt > 0) {
+      const v = Math.sqrt(dx*dx+dy*dy)/dt;
+      state.velocityHistory.push(v);
+      velHistory.push(v);
+      if (velHistory.length > 60) velHistory.shift();
+      drawVelocityChart();
+      updatePhysics();
+    }
+  }
+  state.lastTouchPos = { x: t.clientX, y: t.clientY };
+  state.lastTouchTime = now;
+  updateVerdict();
+}
+
+touchZone.addEventListener('touchstart', e => {
+  e.preventDefault();
+  setFirst('touch');
+  state.touchCount++;
+  document.getElementById('touchCount').textContent = state.touchCount;
+  document.getElementById('touchActiveCount').textContent = e.touches.length;
+  const t = e.touches[0];
+  const force = t.force !== undefined ? t.force : null;
+  log(`touchstart touches=${e.touches.length}${force !== null ? ' force='+force.toFixed(3) : ''}`, 'touch');
+  handleTouchMove(e);
+}, { passive: false });
+
+touchZone.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+touchZone.addEventListener('touchend', e => {
+  e.preventDefault();
+  document.getElementById('touchActiveCount').textContent = e.touches.length;
+  if (touchDot && e.touches.length === 0) {
+    touchDot.remove();
+    touchDot = null;
+  }
+  document.getElementById('forceBar').style.width = '0%';
+  document.getElementById('forceVal').textContent = '0.0000';
+}, { passive: false });
+
+touchZone.addEventListener('touchcancel', e => {
+  document.getElementById('touchActiveCount').textContent = 0;
+  if (touchDot) { touchDot.remove(); touchDot = null; }
+});
+
+// Touch events on document too
+document.addEventListener('touchstart', e => {
+  setFirst('touch');
+  state.touchCount++;
+  document.getElementById('touchCount').textContent = state.touchCount;
+  updateVerdict();
+}, { passive: true });
+
+// Keyboard events
+document.addEventListener('keydown', e => {
+  setFirst('keyboard');
+  state.keyCount++;
+  document.getElementById('keyCount').textContent = state.keyCount;
+  // Physical key detection — virtual KB often has key='' or 'Unidentified'
+  const isPhysical = e.code && e.code !== '' && e.key !== 'Unidentified';
+  if (isPhysical) {
+    state.physicalKeys.add(e.code);
+    document.getElementById('valKeyCodes').textContent =
+      Array.from(state.physicalKeys).slice(0,6).join(', ');
+  }
+  log(`keydown key="${e.key}" code="${e.code}" location=${e.location} physical=${isPhysical}`, 'key');
+  updateVerdict();
+});
+
+// Input type events — virtual keyboard fires these differently
+document.getElementById('testInput').addEventListener('beforeinput', e => {
+  if (e.inputType === 'insertText') {
+    state.insertTextCount++;
+    document.getElementById('valInsertText').textContent = state.insertTextCount;
+  }
+  if (e.inputType === 'deleteContentBackward') {
+    state.deleteCount++;
+    document.getElementById('valDelete').textContent = state.deleteCount;
+  }
+  log(`input type="${e.inputType}" data="${e.data || ''}"`, 'key');
+});
+
+document.getElementById('testInput').addEventListener('compositionstart', () => {
+  state.composeCount++;
+  document.getElementById('valCompose').textContent = state.composeCount;
+});
+
+// Track typed characters for paste ratio
+document.getElementById('testInput').addEventListener('beforeinput', e => {
+  if (e.inputType === 'insertText' && e.data) {
+    state.totalTyped += e.data.length;
+  }
+}, true);
+
+// ── Clipboard tracking ──────────────────────────────────────────────
+
+function clipLog(msg, type) {
+  const el = document.getElementById('clipLog');
+  const div = document.createElement('div');
+  div.className = `ks-entry ${type}`;
+  div.textContent = `[${new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'})}] ${msg}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  if (el.children.length > 40) el.removeChild(el.firstChild);
+}
+
+function updatePasteRatio() {
+  if (state.totalTyped + state.lastPasteLen === 0) return;
+  const ratio = (state.lastPasteLen / (state.totalTyped + state.lastPasteLen) * 100).toFixed(1);
+  const el = document.getElementById('valPasteRatio');
+  el.innerHTML = `${ratio}% pasted` +
+    (ratio > 80 ? ` <span class="badge warn">high — suspicious</span>` :
+     ratio > 40 ? ` <span class="badge info">moderate</span>` :
+     ` <span class="badge pass">low — normal</span>`);
+}
+
+document.addEventListener('copy', e => {
+  state.copyCount++;
+  document.getElementById('copyCount').textContent = state.copyCount;
+  const sel = window.getSelection ? window.getSelection().toString() : '';
+  clipLog(`copy — selected ${sel.length} chars`, 'clip');
+});
+
+document.addEventListener('cut', e => {
+  state.cutCount++;
+  document.getElementById('cutCount').textContent = state.cutCount;
+  const sel = window.getSelection ? window.getSelection().toString() : '';
+  clipLog(`cut — ${sel.length} chars`, 'clip');
+});
+
+document.addEventListener('paste', e => {
+  state.pasteCount++;
+  document.getElementById('pasteCount').textContent = state.pasteCount;
+
+  const cd = e.clipboardData || window.clipboardData;
+  let pasteText = '';
+  let types = [];
+
+  if (cd) {
+    types = Array.from(cd.types || []);
+    pasteText = cd.getData('text/plain') || '';
+  }
+
+  state.lastPasteLen = pasteText.length;
+  document.getElementById('valPasteLen').textContent =
+    `${pasteText.length} chars, types: [${types.join(', ')}]`;
+
+  // Show preview (truncated, no sensitive data)
+  const preview = pasteText.substring(0, 60) + (pasteText.length > 60 ? '…' : '');
+  const wrap = document.getElementById('clipPreviewWrap');
+  document.getElementById('clipPreview').textContent = preview || '(non-text content)';
+  wrap.style.display = pasteText ? 'block' : 'none';
+
+  // Programmatic paste detection
+  // Real user paste: isTrusted=true, has clipboardData, triggered by gesture
+  // Programmatic: isTrusted=false, or execCommand, or no prior focus
+  const isProg = !e.isTrusted;
+  if (isProg) {
+    state.progPasteDetected = true;
+    document.getElementById('valProgPaste').innerHTML =
+      `YES <span class="badge fail">programmatic paste — automation signal</span>`;
+    clipLog(`paste (PROGRAMMATIC) ${pasteText.length} chars isTrusted=false`, 'clip');
+  } else {
+    document.getElementById('valProgPaste').innerHTML =
+      `no <span class="badge pass">user-initiated</span>`;
+    clipLog(`paste (user) ${pasteText.length} chars types=[${types.join(',')}]`, 'clip');
+  }
+
+  // Large paste into input = suspicious — no human types 100+ chars at once
+  if (pasteText.length > 100) {
+    clipLog(`large paste: ${pasteText.length} chars — credential stuffing / automation signal`, 'clip');
+  }
+
+  updatePasteRatio();
+});
+
+// Clipboard API availability check
+(async () => {
+  const el = document.getElementById('valClipAPI');
+  if (!navigator.clipboard) {
+    el.innerHTML = `false <span class="badge warn">not available</span>`;
+    return;
+  }
+  try {
+    // Check read permission without actually reading
+    const perm = await navigator.permissions.query({ name: 'clipboard-read' });
+    el.innerHTML = `true — permission: ${perm.state} <span class="badge info">async clipboard API</span>`;
+  } catch {
+    el.innerHTML = `true <span class="badge info">available (permission check blocked)</span>`;
+  }
+})();
+
+// Haptic / capability checks
+function runCapabilityChecks() {
+  // Vibration API — Safari on iOS intentionally omits this
+  const hasVibrate = 'vibrate' in navigator;
+  const vibrateEl = document.getElementById('valVibration');
+  vibrateEl.innerHTML = hasVibrate
+    ? `true <span class="badge warn">present — Android/desktop, not Safari iOS</span>`
+    : `false <span class="badge pass">absent — correct for Safari iOS</span>`;
+
+  // DeviceMotionEvent
+  const hasMotion = typeof DeviceMotionEvent !== 'undefined';
+  document.getElementById('valMotionAPI').innerHTML = hasMotion
+    ? `true <span class="badge pass">exists</span>`
+    : `false <span class="badge fail">missing</span>`;
+
+  // Permission gating — iOS 13+
+  const needsPerm = hasMotion && typeof DeviceMotionEvent.requestPermission === 'function';
+  document.getElementById('valMotionPerm').innerHTML = needsPerm
+    ? `true <span class="badge pass">iOS 13+ real device signal</span>`
+    : `false <span class="badge warn">desktop or old iOS</span>`;
+
+  // Touch.force — detect via a synthetic check
+  // We can only confirm after first touch event
+  document.getElementById('valTouchForceAPI').textContent = 'waiting for touch...';
+  document.getElementById('valTouchRadiusAPI').textContent = 'waiting for touch...';
+}
+
+function updateTouchAPIStatus() {
+  const forceEl = document.getElementById('valTouchForceAPI');
+  const radiusEl = document.getElementById('valTouchRadiusAPI');
+
+  if (state.forceObserved) {
+    const maxF = state.maxForce;
+    if (maxF > 0) {
+      forceEl.innerHTML = `true — max seen: ${maxF.toFixed(4)} <span class="badge pass">real device</span>`;
+    } else {
+      forceEl.innerHTML = `present but always 0.0 <span class="badge warn">simulator or no 3D Touch</span>`;
+    }
+  }
+
+  if (state.radiusObserved) {
+    radiusEl.innerHTML = `true <span class="badge pass">radiusX/Y available</span>`;
+  }
+}
+
+function updatePhysics() {
+  const vels = state.velocityHistory;
+  if (vels.length < 3) return;
+  const avg = vels.reduce((a,b)=>a+b,0)/vels.length;
+  const variance = vels.reduce((s,v)=>s+Math.pow(v-avg,2),0)/vels.length;
+  document.getElementById('avgVel').textContent = avg.toFixed(3);
+  const varEl = document.getElementById('velVar');
+  varEl.textContent = variance.toFixed(4);
+  varEl.className = 'metric ' + (variance > 0.1 ? 'green' : variance > 0.01 ? 'yellow' : 'red');
+}
+
+function updateVerdict() {
+  updateTouchAPIStatus();
+
+  const box = document.getElementById('verdictBox');
+  const title = document.getElementById('verdictTitle');
+  const detail = document.getElementById('verdictDetail');
+
+  let score = 0;
+  let max = 0;
+  const flags = [];
+
+  // Mouse movement — strong spoof signal
+  max += 3;
+  if (state.mouseCount === 0) {
+    score += 3;
+  } else {
+    flags.push(`Mouse move fired ${state.mouseCount}× — impossible on real iPhone`);
+  }
+
+  // Touch events
+  max += 3;
+  if (state.touchCount > 0) {
+    score += 3;
+  } else if (state.mouseCount === 0 && state.keyCount === 0) {
+    // No input yet
+  } else {
+    flags.push('No touch events detected');
+  }
+
+  // Physical keyboard
+  max += 2;
+  if (state.physicalKeys.size === 0) {
+    score += 2;
+  } else {
+    flags.push(`Physical key codes: ${Array.from(state.physicalKeys).join(', ')}`);
+  }
+
+  // Force — if observed and > 0, positive signal
+  max += 2;
+  if (state.forceObserved && state.maxForce > 0) {
+    score += 2;
+  } else if (state.forceObserved && state.maxForce === 0) {
+    score += 1; // API exists but force = 0 (older iPhone or light touch)
+    flags.push('Force API present but force always 0 — press harder to confirm');
+  }
+
+  // First input
+  max += 2;
+  if (state.firstInput === 'touch') {
+    score += 2;
+  } else if (state.firstInput === 'mouse') {
+    flags.push('First input was mouse — not possible on real iPhone');
+  } else if (state.firstInput === 'keyboard') {
+    flags.push('First input was keyboard — suspicious');
+  }
+
+  if (!state.firstInput) {
+    title.textContent = 'Waiting for input...';
+    detail.textContent = 'Tap the touch zone or type in the text field';
+    box.className = 'verdict-box mixed';
+    title.style.color = '#fbbf24';
+    return;
+  }
+
+  const pct = max > 0 ? Math.round((score/max)*100) : 0;
+
+  if (pct >= 75 && flags.length === 0) {
+    box.className = 'verdict-box real';
+    title.style.color = '#4ade80';
+    title.textContent = `Real iPhone — ${pct}% confidence`;
+    detail.textContent = 'Touch-only input, no mouse events, consistent with genuine iOS device';
+  } else if (pct >= 50) {
+    box.className = 'verdict-box mixed';
+    title.style.color = '#fbbf24';
+    title.textContent = `Suspicious — ${pct}% confidence`;
+    detail.textContent = flags.length ? flags[0] : 'Mixed signals detected';
+  } else {
+    box.className = 'verdict-box fake';
+    title.style.color = '#f87171';
+    title.textContent = `Not a real iPhone — ${pct}% confidence`;
+    detail.textContent = flags[0] || 'Multiple spoof signals detected';
+  }
+}
+
+function resetAll() {
+  Object.assign(state, {
+    mouseCount:0, touchCount:0, keyCount:0,
+    firstInput:null, lastMousePos:null,
+    mousePath:[], touchPath:[], maxForce:0,
+    forceObserved:false, radiusObserved:false,
+    insertTextCount:0, deleteCount:0, composeCount:0,
+    physicalKeys: new Set(), velocityHistory:[],
+    lastTouchPos:null, lastTouchTime:null,
+    lastVel:null, lastVelTime:null,
+    accelHistory:[], peakAccel:0,
+    dirChanges:0, lastDir:null, pauseCount:0,
+    _lastVx:0, _lastVy:0,
+    copyCount:0, pasteCount:0, cutCount:0,
+    lastPasteLen:0, totalTyped:0, progPasteDetected:false,
+  });
+  velHistory.length = 0;
+  accelHistory.length = 0;
+
+  ['mouseCount','touchCount','keyCount','copyCount','pasteCount','cutCount']
+    .forEach(id => document.getElementById(id).textContent = '0');
+  ['forceVal','maxForce','radiusVal','avgVel','velVar',
+   'accelX','accelY','accelMag','accelPeak','accelVar']
+    .forEach(id => document.getElementById(id).textContent = '—');
+  ['barAccelX','barAccelY','barAccelMag']
+    .forEach(id => document.getElementById(id).style.width = '0%');
+
+  document.getElementById('touchActiveCount').textContent = '0';
+  document.getElementById('forceBar').style.width = '0%';
+  document.getElementById('valFirstInput').textContent = 'waiting...';
+  document.getElementById('valMousePos').textContent = 'none';
+  document.getElementById('valMousePath').textContent = '0';
+  document.getElementById('valMouseVel').textContent = '—';
+  document.getElementById('valInsertText').textContent = '0';
+  document.getElementById('valDelete').textContent = '0';
+  document.getElementById('valCompose').textContent = '0';
+  document.getElementById('valKeyCodes').textContent = 'none';
+  document.getElementById('valDirChanges').textContent = '0';
+  document.getElementById('valPauses').textContent = '0';
+  document.getElementById('valPattern').textContent = 'waiting...';
+  document.getElementById('valPasteLen').textContent = '—';
+  document.getElementById('valPasteRatio').textContent = '—';
+  document.getElementById('valProgPaste').textContent = '—';
+  document.getElementById('clipPreviewWrap').style.display = 'none';
+  document.getElementById('ksLog').innerHTML = '';
+  document.getElementById('clipLog').innerHTML = '';
+  document.getElementById('testInput').value = '';
+
+  velCtx.clearRect(0, 0, velCanvas.width, velCanvas.height);
+  accelCtx.clearRect(0, 0, accelCanvas.width, accelCanvas.height);
+
+  const box = document.getElementById('verdictBox');
+  box.className = 'verdict-box mixed';
+  document.getElementById('verdictTitle').textContent = 'Waiting for input...';
+  document.getElementById('verdictTitle').style.color = '#fbbf24';
+  document.getElementById('verdictDetail').textContent = 'Interact with the touch zone and text field below';
+}
+
+runCapabilityChecks();
+
+window.addEventListener('resize', () => {
+  velCanvas.width = velCanvas.offsetWidth;
+  accelCanvas.width = accelCanvas.offsetWidth;
+  drawVelocityChart();
+  drawAccelChart();
+});
+</script>
+</body>
+</html>
